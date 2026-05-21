@@ -244,7 +244,10 @@ const newLead = {
   createdBy: currentUser,
   createdAt: new Date().toLocaleString(),
 };
-    setLeads([newLead, ...leads]);
+   setLeads((prevLeads) => [
+  newLead,
+  ...prevLeads,
+]);
 
     setFormData({
       name: "",
