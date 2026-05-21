@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 export default function App() {
 
   // LOGIN STATE
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // ADMIN CHECK
   const [isAdmin, setIsAdmin] = useState(false);
@@ -13,6 +14,23 @@ export default function App() {
 
   // CURRENT USER
   const [currentUser, setCurrentUser] = useState("");
+  useEffect(() => {
+  try {
+    const savedUser = JSON.parse(
+      localStorage.getItem("crm-current-user")
+    );
+
+    if (savedUser) {
+      setIsLoggedIn(true);
+      setCurrentUser(savedUser.username);
+      setIsAdmin(savedUser.isAdmin);
+    }
+  } catch (error) {
+    console.log("Error loading user");
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   // USERS
   const [users, setUsers] = useState([]);
@@ -28,6 +46,7 @@ export default function App() {
 
   // SEARCH
   const [search, setSearch] = useState("");
+  const leadsSectionRef = useRef(null);
 
   // LEADS
   const [leads, setLeads] = useState([]);
@@ -36,39 +55,60 @@ export default function App() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    source: "",
+    source: "Website",
     status: "New",
     notes: "",
   });
 
   // LOAD USERS
-  useEffect(() => {
-    const savedUsers = JSON.parse(localStorage.getItem("crm-users"));
+ useEffect(() => {
+  try {
+    const savedUsers = JSON.parse(
+      localStorage.getItem("crm-users")
+    );
 
-    if (savedUsers) {
+    if (savedUsers && Array.isArray(savedUsers)) {
       setUsers(savedUsers);
     }
-  }, []);
+  } catch (error) {
+    console.log("Error loading users");
+  }
+}, []);
 
   // SAVE USERS
-  useEffect(() => {
-    localStorage.setItem("crm-users", JSON.stringify(users));
-  }, [users]);
+ useEffect(() => {
+  if (!loading) {
+    localStorage.setItem(
+      "crm-users",
+      JSON.stringify(users)
+    );
+  }
+}, [users, loading]);
 
   // LOAD LEADS
-  useEffect(() => {
-    const savedLeads = JSON.parse(localStorage.getItem("crm-leads"));
+ useEffect(() => {
+  try {
+    const savedLeads = JSON.parse(
+      localStorage.getItem("crm-leads")
+    );
 
-    if (savedLeads) {
+    if (savedLeads && Array.isArray(savedLeads)) {
       setLeads(savedLeads);
     }
-  }, []);
+  } catch (error) {
+    console.log("Error loading leads");
+  }
+}, []);
 
   // SAVE LEADS
   useEffect(() => {
-    localStorage.setItem("crm-leads", JSON.stringify(leads));
-  }, [leads]);
-
+  if (!loading) {
+    localStorage.setItem(
+      "crm-leads",
+      JSON.stringify(leads)
+    );
+  }
+}, [leads, loading]);
   // AUTH INPUT CHANGE
   const handleAuthChange = (e) => {
     setAuthData({
@@ -84,6 +124,10 @@ export default function App() {
       setAuthError("Please fill all fields");
       return;
     }
+    if (authData.password.length < 6) {
+  setAuthError("Password must be at least 6 characters");
+  return;
+}
 
     const userExists = users.find(
       (user) => user.username === authData.username
@@ -124,13 +168,21 @@ export default function App() {
 
       setIsLoggedIn(true);
 
-      setCurrentUser("Admin");
+setCurrentUser("Admin");
 
-      setIsAdmin(true);
+setIsAdmin(true);
 
-      setAuthError("");
+localStorage.setItem(
+  "crm-current-user",
+  JSON.stringify({
+    username: "Admin",
+    isAdmin: true,
+  })
+);
 
-      return;
+setAuthError("");
+
+return;
     }
 
     // NORMAL USER LOGIN
@@ -141,14 +193,21 @@ export default function App() {
     );
 
     if (validUser) {
+setIsLoggedIn(true);
 
-      setIsLoggedIn(true);
+setCurrentUser(validUser.username);
 
-      setCurrentUser(validUser.username);
+setIsAdmin(false);
 
-      setIsAdmin(false);
+localStorage.setItem(
+  "crm-current-user",
+  JSON.stringify({
+    username: validUser.username,
+    isAdmin: false,
+  })
+);
 
-      setAuthError("");
+setAuthError("");
 
     } else {
 
@@ -173,19 +232,24 @@ export default function App() {
       alert("Please fill all required fields");
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    const newLead = {
-      id: Date.now(),
-      ...formData,
-      createdAt: new Date().toLocaleString(),
-    };
-
+if (!emailRegex.test(formData.email)) {
+  alert("Please enter a valid email");
+  return;
+}
+const newLead = {
+  id: Date.now(),
+  ...formData,
+  createdBy: currentUser,
+  createdAt: new Date().toLocaleString(),
+};
     setLeads([newLead, ...leads]);
 
     setFormData({
       name: "",
       email: "",
-      source: "",
+      source: "Website",
       status: "New",
       notes: "",
     });
@@ -193,8 +257,15 @@ export default function App() {
 
   // DELETE LEAD
   const deleteLead = (id) => {
-    setLeads(leads.filter((lead) => lead.id !== id));
-  };
+
+  const confirmDelete = window.confirm(
+    "Are you sure you want to delete this lead?"
+  );
+
+  if (!confirmDelete) return;
+
+  setLeads(leads.filter((lead) => lead.id !== id));
+};
 
   // UPDATE STATUS
   const updateStatus = (id, status) => {
@@ -206,10 +277,15 @@ export default function App() {
   };
 
   // SEARCH FILTER
-  const filteredLeads = leads.filter((lead) =>
-    lead.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLeads = leads.filter((lead) => {
+  const searchText = search.toLowerCase();
 
+  return (
+    lead.name.toLowerCase().includes(searchText) ||
+    lead.email.toLowerCase().includes(searchText) ||
+    lead.source.toLowerCase().includes(searchText)
+  );
+});
   // ANALYTICS
   const totalLeads = leads.length;
 
@@ -224,8 +300,25 @@ export default function App() {
   const newLeads = leads.filter(
     (lead) => lead.status === "New"
   ).length;
+  const hour = new Date().getHours();
+
+const greeting =
+  hour < 12
+    ? "Good Morning ☀️"
+    : hour < 18
+    ? "Good Afternoon 🌤️"
+    : "Good Evening 🌙";
 
   // AUTH PAGE
+  if (loading) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+      <h1 className="text-2xl font-bold text-cyan-400">
+        Loading CRM...
+      </h1>
+    </div>
+  );
+}
   if (!isLoggedIn) {
 
     return (
@@ -258,14 +351,18 @@ export default function App() {
           />
 
           <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            value={authData.password}
-            onChange={handleAuthChange}
-            className="w-full p-4 rounded-xl bg-slate-800 mb-4 outline-none border border-gray-700"
-          />
-
+  type="password"
+  name="password"
+  placeholder="Password"
+  value={authData.password}
+  onChange={handleAuthChange}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      isRegistering ? handleRegister() : handleLogin();
+    }
+  }}
+  className="w-full p-4 rounded-xl bg-slate-800 mb-4 outline-none border border-gray-700"
+/>
           {authError && (
             <p className="text-red-400 mb-4 text-sm">
               {authError}
@@ -276,7 +373,7 @@ export default function App() {
 
             <button
               onClick={handleRegister}
-              className="w-full bg-green-500 py-3 rounded-xl font-bold hover:bg-green-600 transition"
+              className="w-full bg-green-500 py-3 rounded-xl font-bold hover:bg-green-600 hover:scale-[1.02] transition duration-300"
             >
               Create Account
             </button>
@@ -285,7 +382,7 @@ export default function App() {
 
             <button
               onClick={handleLogin}
-              className="w-full bg-cyan-500 py-3 rounded-xl font-bold hover:bg-cyan-600 transition"
+              className="w-full bg-cyan-500 py-3 rounded-xl font-bold hover:bg-cyan-600 hover:scale-[1.02] transition duration-300"
             >
               Login
             </button>
@@ -353,19 +450,24 @@ export default function App() {
           <h1 className="text-5xl font-extrabold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
             Mini CRM Dashboard
           </h1>
+<p className="text-gray-400 mt-2">
+  {greeting}, {currentUser} 👋
+</p>
 
-          <p className="text-gray-400 mt-2">
-            Welcome back, {currentUser} 👋
-          </p>
+<p className="text-cyan-400 mt-1 text-sm">
+  Total Leads: {totalLeads}
+</p>
 
         </div>
 
         <button
-          onClick={() => {
-            setIsLoggedIn(false);
-            setIsAdmin(false);
-          }}
-          className="bg-red-500 px-5 py-3 rounded-xl mt-5 md:mt-0 hover:bg-red-600 transition"
+         onClick={() => {
+  setIsLoggedIn(false);
+  setIsAdmin(false);
+
+  localStorage.removeItem("crm-current-user");
+}}
+className="bg-red-500 px-5 py-3 rounded-xl mt-5 md:mt-0 hover:bg-red-600 hover:scale-[1.03] transition duration-300"
         >
           Logout
         </button>
@@ -379,14 +481,29 @@ export default function App() {
           type="text"
           placeholder="Search leads by name..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full md:w-[400px] p-4 rounded-xl bg-slate-800 border border-gray-700 outline-none"
+         onChange={(e) => {
+  const value = e.target.value;
+
+  setSearch(value);
+
+  clearTimeout(window.searchTimeout);
+
+  window.searchTimeout = setTimeout(() => {
+    if (value.trim() !== "") {
+      leadsSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, 800);
+}}
+          className="w-full md:w-[400px] p-4 rounded-xl bg-slate-800 border border-gray-700 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 transition duration-300"
         />
 
       </div>
 
       {/* STATS */}
-      <div className="grid md:grid-cols-4 gap-6 mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
 
         <div className="bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10">
           <h2 className="text-gray-400">Total Leads</h2>
@@ -450,14 +567,18 @@ export default function App() {
               className="bg-[#1e293b] p-4 rounded-xl outline-none border border-gray-700"
             />
 
-            <input
-              type="text"
-              name="source"
-              placeholder="Lead Source"
-              value={formData.source}
-              onChange={handleChange}
-              className="bg-[#1e293b] p-4 rounded-xl outline-none border border-gray-700"
-            />
+            <select
+  name="source"
+  value={formData.source}
+  onChange={handleChange}
+  className="bg-[#1e293b] p-4 rounded-xl outline-none border border-gray-700"
+>
+  <option>Website</option>
+  <option>Instagram</option>
+  <option>Facebook</option>
+  <option>LinkedIn</option>
+  <option>Referral</option>
+</select>
 
             <select
               name="status"
@@ -490,19 +611,41 @@ export default function App() {
       )}
 
       {/* LEADS */}
-      <div>
+      {/* LEADS */}
+<div ref={leadsSectionRef}>
 
-        <h2 className="text-3xl font-bold mb-8 text-cyan-400">
-          Client Leads
-        </h2>
+       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+
+  <h2 className="text-3xl font-bold text-cyan-400">
+    Client Leads
+  </h2>
+
+  <p className="text-gray-400 mt-2 md:mt-0">
+    Showing {filteredLeads.length} lead
+    {filteredLeads.length !== 1 ? "s" : ""}
+  </p>
+
+</div>
 
         <div className="grid gap-6">
 
           {filteredLeads.length === 0 ? (
 
             <div className="bg-white/10 p-10 rounded-3xl text-center text-gray-400 border border-white/10">
-              No Leads Found
-            </div>
+
+  <div className="text-6xl mb-4">
+    📭
+  </div>
+
+  <h3 className="text-2xl font-bold text-white mb-2">
+    No Leads Found
+  </h3>
+
+  <p className="text-gray-400">
+    Add your first client lead to get started.
+  </p>
+
+</div>
 
           ) : (
 
@@ -510,7 +653,13 @@ export default function App() {
 
               <div
                 key={lead.id}
-                className="bg-white/10 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-xl flex flex-col lg:flex-row justify-between gap-6"
+                className={`bg-white/10 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-xl flex flex-col lg:flex-row justify-between gap-6 transition duration-300 hover:scale-[1.01] hover:border-cyan-400/40 border-l-4 ${
+  lead.status === "New"
+    ? "border-l-blue-500"
+    : lead.status === "Contacted"
+    ? "border-l-yellow-500"
+    : "border-l-green-500"
+}`}
               >
 
                 <div>
@@ -532,8 +681,8 @@ export default function App() {
                   </p>
 
                   <p className="text-cyan-400 text-sm mt-3">
-                    Added: {lead.createdAt}
-                  </p>
+  Added by {lead.createdBy} • {lead.createdAt}
+</p>
 
                 </div>
 
@@ -554,11 +703,11 @@ export default function App() {
                   {/* ONLY ADMIN CAN UPDATE */}
                   {isAdmin && (
 
-                    <div className="flex gap-3 flex-wrap">
+                    <div className="flex gap-3 flex-wrap justify-start">
 
                       <button
                         onClick={() => updateStatus(lead.id, "New")}
-                        className="bg-blue-500 px-4 py-2 rounded-xl"
+                        className="bg-blue-500 px-4 py-2 rounded-xl hover:scale-105 transition duration-300"
                       >
                         New
                       </button>
@@ -567,7 +716,7 @@ export default function App() {
                         onClick={() =>
                           updateStatus(lead.id, "Contacted")
                         }
-                        className="bg-yellow-500 text-black px-4 py-2 rounded-xl"
+                        className="bg-yellow-500 text-black px-4 py-2 rounded-xl hover:scale-105 transition duration-300"
                       >
                         Contacted
                       </button>
@@ -576,7 +725,7 @@ export default function App() {
                         onClick={() =>
                           updateStatus(lead.id, "Converted")
                         }
-                        className="bg-green-500 px-4 py-2 rounded-xl"
+                        className="bg-green-500 px-4 py-2 rounded-xl hover:scale-105 transition duration-300"
                       >
                         Converted
                       </button>
@@ -590,7 +739,7 @@ export default function App() {
 
                     <button
                       onClick={() => deleteLead(lead.id)}
-                      className="bg-red-500 px-4 py-2 rounded-xl hover:bg-red-600 transition"
+                      className="bg-red-500 px-4 py-2 rounded-xl hover:bg-red-600 hover:scale-105 transition duration-300"
                     >
                       Delete Lead
                     </button>
